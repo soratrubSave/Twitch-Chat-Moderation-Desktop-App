@@ -1,0 +1,8 @@
+ชื่อโครงงาน (ไทย): ระบบตรวจจับคำหยาบจากหน้าจอ
+Project Title (Eng): SCREEN-BASED PROFANITY DETECTION SYSTEM
+
+	Streaming platforms have become increasingly popular, but streamers often struggle to monitor and control inappropriate language in their chat sections, as existing profanity filtering systems do not comprehensively cover all languages and contexts, particularly Thai language and modified forms of profanity.
+	This project presents the development of a profanity detection system for the Twitch platform by connecting to the Twitch IRC API to retrieve chat messages in real-time, which provides high accuracy. The system consists of three main components: a module for connecting and retrieving messages from Twitch IRC, a profanity detection module using Dictionary-based Pattern Matching techniques combined with Word Segmentation for English, and a real-time user notification system. The system utilizes a Multi-threading structure with PyQt5 QThread for processing efficiency. It supports profanity detection in both Thai and English, with the capability to handle profanity modified with special characters or written as concatenated words.
+
+
+Keywords : Profanity detection, Pattern Matching, Word Segmentation, Twitch IRC, Real-time Chat Processing
