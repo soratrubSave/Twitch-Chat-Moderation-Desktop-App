@@ -21,7 +21,14 @@ try:
     print("wordsegment imported successfully")
 except ImportError:
     WORDSEGMENT_AVAILABLE = False
-    print("wordsegment not available, falling back to basic detection")    
+    print("wordsegment not available, falling back to basic detection")
+
+try:
+    import ahocorasick  # type: ignore
+    AHOCORASICK_AVAILABLE = True
+except ImportError:
+    AHOCORASICK_AVAILABLE = False
+    print("pyahocorasick not available, Thai detection will use fallback (slower)")    
 
 # Configure logging at the beginning of the script
 logging.basicConfig(
@@ -44,7 +51,7 @@ class TwitchChatWorker(QObject):
         self.channel_name = channel_name.lower()
         self.running = False
         self.socket = None
-        self.badwords_th, self.badwords_en = self.load_bad_words()
+        self.badwords_th, self.badwords_en, self.ac_th = self.load_bad_words()
         self.total_messages = 0
         self.bad_word_count = 0
         
@@ -68,6 +75,7 @@ class TwitchChatWorker(QObject):
         # โหลดแยก
         badwords_th = set()
         badwords_en = set()
+        ac_th = None
         
         # โหลดคำไทย
         try:
@@ -78,6 +86,18 @@ class TwitchChatWorker(QObject):
         except FileNotFoundError:
             self.logger.warning("Thai badwords.txt not found.")
         
+        # สร้าง Aho-Corasick automaton สำหรับคำไทย (O(M) ต่อข้อความ แทน O(B×M))
+        if AHOCORASICK_AVAILABLE and badwords_th:
+            try:
+                ac_th = ahocorasick.Automaton()
+                for word in badwords_th:
+                    ac_th.add_word(word, word)
+                ac_th.make_automaton()
+                self.logger.info("Aho-Corasick automaton built for Thai bad words.")
+            except Exception as e:
+                self.logger.warning(f"Could not build Aho-Corasick for Thai: {e}, using fallback.")
+                ac_th = None
+        
         # โหลดคำอังกฤษ
         try:
             with open('badwords_en.txt', 'r', encoding='utf-8') as f:
@@ -87,7 +107,7 @@ class TwitchChatWorker(QObject):
         except FileNotFoundError:
             self.logger.warning("English badwords_en.txt not found.")
         
-        return badwords_th, badwords_en
+        return badwords_th, badwords_en, ac_th
     
     def detect_english_profanity(self, message):
         """ตรวจจับคำหยาบภาษาอังกฤษด้วย wordsegment + badwords_en - ปรับปรุงแล้ว"""
@@ -134,17 +154,25 @@ class TwitchChatWorker(QObject):
             return []
                   
     def detect_thai_profanity(self, message):
-        """ตรวจจับคำหยาบภาษาไทย"""
+        """ตรวจจับคำหยาบภาษาไทย (Aho-Corasick O(M) หรือ fallback O(B×M))"""
         try:
             found_words = set()
             message_lower = message.lower()
             message_clean = re.sub(r'[^a-zA-Zก-๙\s]', '', message_lower)
             message_clean_no_space = message_clean.replace(' ', '')
             
-            # ตรวจสอบคำหยาบไทยกับข้อความที่ลบสัญลักษณ์และ space แล้ว
-            for badword in self.badwords_th:
-                if badword in message_clean_no_space:
-                    found_words.add(badword)
+            if not message_clean_no_space:
+                return []
+            
+            if self.ac_th:
+                # วิธีใหม่: สแกนข้อความครั้งเดียว O(M)
+                for _end_index, found_word in self.ac_th.iter(message_clean_no_space):
+                    found_words.add(found_word)
+            else:
+                # Fallback: วนทุกคำหยาบ O(B×M)
+                for badword in self.badwords_th:
+                    if badword in message_clean_no_space:
+                        found_words.add(badword)
             
             return list(found_words)
             
